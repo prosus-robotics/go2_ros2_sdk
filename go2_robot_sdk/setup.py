@@ -37,6 +37,7 @@ setup(
     entry_points={
         'console_scripts': [
             'go2_driver_node = go2_robot_sdk.main:main',
+            'waypoint_tool = go2_robot_sdk.waypoint_tool:main',
         ],
     },
 )

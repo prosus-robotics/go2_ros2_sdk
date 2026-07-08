@@ -180,11 +180,16 @@ class Go2NodeFactory:
         """Create core Go2 robot nodes"""
         return [
             # Main robot driver (clean architecture)
+            # respawn: the WebRTC handshake can lose a race against the heavy
+            # simultaneous launch startup and exit; auto-restart lets it
+            # reconnect once the startup burst settles.
             Node(
                 package='go2_robot_sdk',
                 executable='go2_driver_node',
                 name='go2_driver_node',
                 output='screen',
+                respawn=True,
+                respawn_delay=3.0,
                 parameters=[{
                     'robot_ip': self.config.robot_ip,
                     'token': self.config.robot_token,

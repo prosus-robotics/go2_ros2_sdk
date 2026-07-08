@@ -14,6 +14,7 @@ from threading import Lock
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
+from rcl_interfaces.msg import ParameterDescriptor, ParameterType
 from sensor_msgs.msg import PointCloud2
 from sensor_msgs_py import point_cloud2
 import open3d as o3d
@@ -117,7 +118,11 @@ class LidarToPointCloudNode(Node):
     
     def _declare_parameters(self) -> None:
         """Declare all node parameters"""
-        self.declare_parameter('robot_ip_lst', [])
+        self.declare_parameter(
+            'robot_ip_lst',
+            [],
+            ParameterDescriptor(type=ParameterType.PARAMETER_STRING_ARRAY),
+        )
         self.declare_parameter('map_name', '3d_map')
         self.declare_parameter('map_save', 'true')
         self.declare_parameter('save_interval', 10.0)

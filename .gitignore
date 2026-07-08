@@ -7,3 +7,10 @@ __pycache__
 .DS_Store
 go2_robot_sdk/.coverage
 go2_robot_sdk/coverage.xml
+
+# Generated SLAM / Nav map artifacts (regenerated on demand; not versioned).
+# Anchored to repo root so config/*.yaml files stay tracked.
+/*.pgm
+/*.yaml
+/*.data
+/*.posegraph
