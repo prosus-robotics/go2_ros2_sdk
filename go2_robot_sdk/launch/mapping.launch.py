@@ -167,6 +167,8 @@ def generate_launch_description():
             name='go2_teleop_node',
             condition=IfCondition(with_joystick),
             parameters=[config_paths['twist_mux']],
+            # High-priority twist_mux input so a held deadman overrides Nav2.
+            remappings=[('cmd_vel', 'cmd_vel_joy')],
         ),
         Node(
             package='twist_mux',

@@ -18,7 +18,7 @@ from tf2_ros import TransformBroadcaster
 from geometry_msgs.msg import Twist, PoseStamped
 from go2_interfaces.msg import Go2State, IMU
 from go2_interfaces.msg import LowState, VoxelMapCompressed, WebRtcReq
-from sensor_msgs.msg import PointCloud2, JointState, Joy, Image, CameraInfo
+from sensor_msgs.msg import PointCloud2, JointState, Joy, Image, CameraInfo, Imu
 from nav_msgs.msg import Odometry
 
 from ..domain.entities import RobotConfig, RobotData, CameraData
@@ -91,6 +91,7 @@ class Go2DriverNode(Node):
                 ('decode_lidar', True),
                 ('publish_raw_voxel', False),
                 ('obstacle_avoidance', False),
+                ('publish_odom_tf', True),
             ]
         )
 
@@ -104,7 +105,8 @@ class Go2DriverNode(Node):
             enable_video=self.get_parameter('enable_video').get_parameter_value().bool_value,
             decode_lidar=self.get_parameter('decode_lidar').get_parameter_value().bool_value,
             publish_raw_voxel=self.get_parameter('publish_raw_voxel').get_parameter_value().bool_value,
-            obstacle_avoidance=self.get_parameter('obstacle_avoidance').get_parameter_value().bool_value
+            obstacle_avoidance=self.get_parameter('obstacle_avoidance').get_parameter_value().bool_value,
+            publish_odom_tf=self.get_parameter('publish_odom_tf').get_parameter_value().bool_value
         )
 
         # Log configuration
@@ -115,6 +117,7 @@ class Go2DriverNode(Node):
         self.get_logger().info(f"Decode lidar: {config.decode_lidar}")
         self.get_logger().info(f"Publish raw voxel: {config.publish_raw_voxel}")
         self.get_logger().info(f"Obstacle avoidance: {config.obstacle_avoidance}")
+        self.get_logger().info(f"Publish odom TF: {config.publish_odom_tf}")
 
         return config
 
@@ -133,6 +136,7 @@ class Go2DriverNode(Node):
             'lidar': [],
             'odometry': [],
             'imu': [],
+            'imu_std': [],
             'camera': [],
             'camera_info': [],
             'voxel': []
@@ -148,6 +152,7 @@ class Go2DriverNode(Node):
                 lidar_topic = 'point_cloud2'
                 odom_topic = 'odom'
                 imu_topic = 'imu'
+                imu_std_topic = 'imu/data'
                 camera_topic = 'camera/image_raw'
                 camera_info_topic = 'camera/camera_info'
                 voxel_topic = '/utlidar/voxel_map_compressed'
@@ -158,6 +163,7 @@ class Go2DriverNode(Node):
                 lidar_topic = f'{prefix}/point_cloud2'
                 odom_topic = f'{prefix}/odom'
                 imu_topic = f'{prefix}/imu'
+                imu_std_topic = f'{prefix}/imu/data'
                 camera_topic = f'{prefix}/camera/image_raw'
                 camera_info_topic = f'{prefix}/camera/camera_info'
                 voxel_topic = f'{prefix}/utlidar/voxel_map_compressed'
@@ -175,6 +181,8 @@ class Go2DriverNode(Node):
                 self.create_publisher(Odometry, odom_topic, qos_profile))
             publishers['imu'].append(
                 self.create_publisher(IMU, imu_topic, qos_profile))
+            publishers['imu_std'].append(
+                self.create_publisher(Imu, imu_std_topic, qos_profile))
 
             if self.config.enable_video:
                 publishers['camera'].append(

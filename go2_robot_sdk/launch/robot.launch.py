@@ -6,8 +6,9 @@ from typing import List
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.conditions import IfCondition
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument
 from launch.launch_description_sources import FrontendLaunchDescriptionSource, PythonLaunchDescriptionSource
 
@@ -66,6 +67,7 @@ class Go2LaunchConfig:
             'twist_mux': os.path.join(self.package_dir, 'config', 'twist_mux.yaml'),
             'slam': os.path.join(self.package_dir, 'config', 'mapper_params_online_async.yaml'),
             'nav2': os.path.join(self.package_dir, 'config', 'nav2_params.yaml'),
+            'ekf': os.path.join(self.package_dir, 'config', 'ekf.yaml'),
             'rviz': os.path.join(self.package_dir, 'config', self.rviz_config),
             'urdf': os.path.join(self.package_dir, 'urdf', self.urdf_file),
         }
@@ -86,6 +88,7 @@ class Go2NodeFactory:
             DeclareLaunchArgument('foxglove', default_value='true', description='Launch Foxglove Bridge'),
             DeclareLaunchArgument('joystick', default_value='true', description='Launch joystick'),
             DeclareLaunchArgument('teleop', default_value='true', description='Launch teleoperation'),
+            DeclareLaunchArgument('ekf', default_value='false', description='Fuse odom+IMU via robot_localization EKF (EKF then owns odom->base_link)'),
         ]
     
     def create_robot_state_nodes(self) -> List[Node]:
@@ -193,7 +196,14 @@ class Go2NodeFactory:
                 parameters=[{
                     'robot_ip': self.config.robot_ip,
                     'token': self.config.robot_token,
-                    'conn_type': self.config.conn_type
+                    'conn_type': self.config.conn_type,
+                    # Yield odom->base_link to the EKF when ekf:=true.
+                    'publish_odom_tf': ParameterValue(
+                        PythonExpression(
+                            ["'false' if '", LaunchConfiguration('ekf'),
+                             "'.lower() == 'true' else 'true'"]),
+                        value_type=bool,
+                    ),
                 }],
             ),
             # LiDAR processing node (new separate package)
@@ -235,6 +245,18 @@ class Go2NodeFactory:
                     'audio_quality': 'standard'
                 }],
             ),
+            # Optional EKF (odom + IMU); owns odom->base_link when ekf:=true.
+            Node(
+                package='robot_localization',
+                executable='ekf_node',
+                name='ekf_filter_node',
+                output='screen',
+                condition=IfCondition(LaunchConfiguration('ekf')),
+                parameters=[
+                    self.config.config_paths['ekf'],
+                    {'use_sim_time': False},
+                ],
+            ),
         ]
     
     def create_teleop_nodes(self) -> List[Node]:
@@ -258,6 +280,10 @@ class Go2NodeFactory:
                 name='go2_teleop_node',
                 condition=IfCondition(with_joystick),
                 parameters=[self.config.config_paths['twist_mux']],
+                # Publish to the high-priority twist_mux input so a held deadman
+                # overrides Nav2; without this the joystick lands on /cmd_vel and
+                # only ties with Nav2 instead of taking over.
+                remappings=[('cmd_vel', 'cmd_vel_joy')],
             ),
             # Twist multiplexer
             Node(

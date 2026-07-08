@@ -9,7 +9,7 @@ from tf2_ros import TransformBroadcaster
 from geometry_msgs.msg import TransformStamped
 from go2_interfaces.msg import Go2State, IMU
 from go2_interfaces.msg import VoxelMapCompressed
-from sensor_msgs.msg import PointCloud2, PointField, JointState
+from sensor_msgs.msg import PointCloud2, PointField, JointState, Imu as ImuMsg
 from sensor_msgs_py import point_cloud2
 from std_msgs.msg import Header
 from nav_msgs.msg import Odometry
@@ -42,8 +42,10 @@ class ROS2Publisher(IRobotDataPublisher):
         try:
             robot_idx = int(robot_data.robot_id)
             
-            # Publish transform
-            self._publish_transform(robot_data, robot_idx)
+            # Publish odom->base_link TF unless an external estimator (e.g. a
+            # robot_localization EKF) owns it (publish_odom_tf:=false).
+            if self.config.publish_odom_tf:
+                self._publish_transform(robot_data, robot_idx)
             
             # Publish odometry topic
             self._publish_odometry_topic(robot_data, robot_idx)
@@ -98,6 +100,19 @@ class ROS2Publisher(IRobotDataPublisher):
         odom_msg.pose.pose.orientation.y = float(orientation['y'])
         odom_msg.pose.pose.orientation.z = float(orientation['z'])
         odom_msg.pose.pose.orientation.w = float(orientation['w'])
+
+        # rt/utlidar/robot_pose carries no covariance. Advertise a small, finite
+        # x/y/yaw uncertainty and mark z/roll/pitch (and all velocities) as
+        # effectively unknown so consumers (AMCL, EKF) weight it sensibly.
+        odom_msg.pose.covariance = [
+            0.02, 0.0,  0.0, 0.0, 0.0, 0.0,
+            0.0,  0.02, 0.0, 0.0, 0.0, 0.0,
+            0.0,  0.0,  1e6, 0.0, 0.0, 0.0,
+            0.0,  0.0,  0.0, 1e6, 0.0, 0.0,
+            0.0,  0.0,  0.0, 0.0, 1e6, 0.0,
+            0.0,  0.0,  0.0, 0.0, 0.0, 0.03,
+        ]
+        odom_msg.twist.covariance = [1e6] * 36  # velocity is not measured here
 
         self.publishers['odometry'][robot_idx].publish(odom_msg)
 
@@ -176,8 +191,44 @@ class ROS2Publisher(IRobotDataPublisher):
                 
                 self.publishers['imu'][robot_idx].publish(imu)
 
+                self._publish_std_imu(imu_data, robot_data.robot_id, robot_idx)
+
         except Exception as e:
             logger.error(f"Error publishing robot state: {e}")
+
+    def _publish_std_imu(self, imu_data, robot_id: str, robot_idx: int) -> None:
+        """Publish a standard sensor_msgs/Imu.
+
+        The custom go2_interfaces/IMU is not consumable by stacks like
+        robot_localization. Stamped in the base_link frame; for the 2D EKF only
+        yaw and yaw-rate are relied upon.
+        """
+        q = imu_data.quaternion       # Unitree order: [w, x, y, z]
+        gyro = imu_data.gyroscope
+        acc = imu_data.accelerometer
+        if len(q) != 4 or len(gyro) != 3 or len(acc) != 3:
+            return
+
+        msg = ImuMsg()
+        msg.header.stamp = self.node.get_clock().now().to_msg()
+        msg.header.frame_id = (
+            'base_link' if self.config.conn_mode == 'single'
+            else f'robot{robot_id}/base_link'
+        )
+        msg.orientation.w = float(q[0])
+        msg.orientation.x = float(q[1])
+        msg.orientation.y = float(q[2])
+        msg.orientation.z = float(q[3])
+        msg.angular_velocity.x = float(gyro[0])
+        msg.angular_velocity.y = float(gyro[1])
+        msg.angular_velocity.z = float(gyro[2])
+        msg.linear_acceleration.x = float(acc[0])
+        msg.linear_acceleration.y = float(acc[1])
+        msg.linear_acceleration.z = float(acc[2])
+        msg.orientation_covariance = [0.02, 0.0, 0.0, 0.0, 0.02, 0.0, 0.0, 0.0, 0.02]
+        msg.angular_velocity_covariance = [0.01, 0.0, 0.0, 0.0, 0.01, 0.0, 0.0, 0.0, 0.01]
+        msg.linear_acceleration_covariance = [0.05, 0.0, 0.0, 0.0, 0.05, 0.0, 0.0, 0.0, 0.05]
+        self.publishers['imu_std'][robot_idx].publish(msg)
 
     def publish_lidar_data(self, robot_data: RobotData) -> None:
         """Publish lidar data"""

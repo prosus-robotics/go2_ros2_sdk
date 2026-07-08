@@ -16,11 +16,13 @@ class RobotConfig:
     publish_raw_voxel: bool
     obstacle_avoidance: bool
     conn_mode: str  # 'single' or 'multi'
+    publish_odom_tf: bool = True  # False lets an external estimator (EKF) own odom->base_link
 
     @classmethod
     def from_params(cls, robot_ip: str, token: str, conn_type: str, 
                    enable_video: bool, decode_lidar: bool, 
-                   publish_raw_voxel: bool, obstacle_avoidance: bool):
+                   publish_raw_voxel: bool, obstacle_avoidance: bool,
+                   publish_odom_tf: bool = True):
         """Создание конфигурации из параметров"""
         robot_ip_list = robot_ip.replace(" ", "").split(",")
         conn_mode = "single" if (
@@ -34,5 +36,6 @@ class RobotConfig:
             decode_lidar=decode_lidar,
             publish_raw_voxel=publish_raw_voxel,
             obstacle_avoidance=obstacle_avoidance,
-            conn_mode=conn_mode
+            conn_mode=conn_mode,
+            publish_odom_tf=publish_odom_tf
         ) 
