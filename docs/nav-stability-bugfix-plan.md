@@ -1,11 +1,19 @@
 # Nav Stability Fix Plan (careful, sequenced)
 
-Status: **plan — no nav code changed yet.** Branch: `plan/nav-stability-fixes`
-(doc only, based on `feature/waypoint-tool`).
+Status: **IMPLEMENTED on `plan/nav-stability-fixes`** — FIX-1…7 landed as seven
+separate commits (one per fix, in order) on top of this doc. Baseline
+`feature/waypoint-tool` remains pushed to `origin` for rollback; revert any
+single `FIX-N:` commit to back that one fix out.
 
 This is the careful execution plan for the seven stability issues. It is
 deliberately ordered so the **safety** and **pure-correctness** fixes land
 first, cheap config fixes next, and the one risky code change (EKF) last.
+
+**Before testing:** rebuild + re-source on the robot:
+`colcon build --packages-select go2_robot_sdk lidar_processor && source install/setup.bash`.
+FIX-7 additionally needs `robot_localization` installed
+(`sudo apt install ros-$ROS_DISTRO-robot-localization`); it only runs when you
+pass `ekf:=true`, so it does not affect the default bringup.
 
 ---
 
@@ -14,8 +22,9 @@ first, cheap config fixes next, and the one risky code change (EKF) last.
 1. **Baseline is safe.** `feature/waypoint-tool` is pushed to `origin`. At any
    point you can return to known-good with:
    `git checkout feature/waypoint-tool` (or `git checkout feature/waypoint-tool -- <file>`).
-2. **Implement on a separate branch:** `fix/nav-stability` off
-   `feature/waypoint-tool`. Keep this `plan/...` branch doc-only.
+2. **Implemented on this branch** (`plan/nav-stability-fixes`) per request — the
+   fixes sit as separate commits on top of this doc, not a separate `fix/...`
+   branch.
 3. **One fix = one commit.** Never stack two untested changes on the robot.
 4. **Test gate after every fix** (see the per-fix "Verify" + the protocol at the
    bottom). If a fix regresses, `git revert` that single commit and move on.
@@ -269,6 +278,16 @@ ekf_filter_node:
 ```
 
 5. Add `robot_localization` to package deps.
+
+**Implemented as `config/ekf.yaml` + an `ekf:=true` launch arg (default off).**
+One flag does everything: `ros2 launch go2_robot_sdk robot.launch.py ekf:=true`
+starts `ekf_node` **and** flips the driver's `publish_odom_tf` to `false`, so
+`odom→base_link` ownership transfers cleanly (no dual broadcaster). The filter
+fuses odom `x, y, yaw` + **IMU yaw-rate only** — the Go2 IMU's absolute yaw has
+an arbitrary zero that would fight the odom yaw, so it is intentionally not
+fused (this differs from the sketch above). Independent of the flag, the driver
+now always publishes `sensor_msgs/Imu` on `imu/data` and real pose covariance
+on `odom`.
 
 **Depends on:** FIX-1…6 validated (so you isolate EKF effects).
 **Verify:** exactly **one** publisher of `odom→base_link` (`ros2 run tf2_tools
