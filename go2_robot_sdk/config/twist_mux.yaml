@@ -12,7 +12,13 @@
     scale_angular:
       yaw: 1.0
 
-    require_enable_button: false
+    # Deadman: teleop only emits while the enable button is held, so the
+    # priority-10 joy input does not permanently mask Nav2 (priority 5).
+    # Holding the button with sticks centered = commanded stop = manual e-stop.
+    # NOTE: verify enable_button for your controller via `ros2 topic echo /joy`.
+    require_enable_button: true
+    enable_button: 4
+    enable_turbo_button: -1
 
 
 /twist_mux:

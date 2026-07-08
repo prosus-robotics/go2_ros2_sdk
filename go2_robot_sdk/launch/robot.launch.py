@@ -258,6 +258,10 @@ class Go2NodeFactory:
                 name='go2_teleop_node',
                 condition=IfCondition(with_joystick),
                 parameters=[self.config.config_paths['twist_mux']],
+                # Publish to the high-priority twist_mux input so a held deadman
+                # overrides Nav2; without this the joystick lands on /cmd_vel and
+                # only ties with Nav2 instead of taking over.
+                remappings=[('cmd_vel', 'cmd_vel_joy')],
             ),
             # Twist multiplexer
             Node(
