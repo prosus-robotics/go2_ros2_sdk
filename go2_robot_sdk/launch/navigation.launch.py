@@ -1,6 +1,7 @@
 # Navigation launch file - optimized for AMCL localization and Nav2
 # Usage: ros2 launch go2_robot_sdk navigation.launch.py map:=/path/to/map.yaml
 
+import math
 import os
 from typing import List
 from ament_index_python.packages import get_package_share_directory
@@ -8,7 +9,7 @@ from launch import LaunchDescription
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
-from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription, TimerAction
 from launch.launch_description_sources import FrontendLaunchDescriptionSource, PythonLaunchDescriptionSource
 
 
@@ -127,7 +128,7 @@ def generate_launch_description():
                 ('scan', '/scan'),
             ],
             parameters=[{
-                'target_frame': 'base_link',
+                'target_frame': 'base_footprint',
                 'max_height': 2.0,
                 'min_height': -0.2,
                 'angle_min': -3.14159,
@@ -236,10 +237,57 @@ def generate_launch_description():
         ),
     ]
     
+    # Seamless localization: AMCL needs one initial-pose guess to lock onto the
+    # map (otherwise it doesn't know where the robot is). Instead of hand-placing
+    # it every run with RViz "2D Pose Estimate", auto-publish the robot's known
+    # start pose a few times once AMCL is up. Default (0, 0, 0) == the map origin,
+    # i.e. drive the robot back to the SAME spot you started mapping from ("dock")
+    # and it just localizes. Override for a different start:
+    #     INIT_X=1.5 INIT_Y=-0.5 INIT_YAW=1.57 scripts/run_nav.sh my_map.yaml
+    # You can still correct it live from RViz/Foxglove at any time (last one wins).
+    init_x = os.getenv('INIT_X', '0.0')
+    init_y = os.getenv('INIT_Y', '0.0')
+    init_yaw = float(os.getenv('INIT_YAW', '0.0'))
+    qz = math.sin(init_yaw / 2.0)
+    qw = math.cos(init_yaw / 2.0)
+    cov = ('[0.25,0.0,0.0,0.0,0.0,0.0, 0.0,0.25,0.0,0.0,0.0,0.0, '
+           '0.0,0.0,0.0,0.0,0.0,0.0, 0.0,0.0,0.0,0.0,0.0,0.0, '
+           '0.0,0.0,0.0,0.0,0.0,0.0, 0.0,0.0,0.0,0.0,0.0,0.0685]')
+    initialpose_yaml = (
+        f"{{header: {{frame_id: map}}, pose: {{pose: {{position: "
+        f"{{x: {init_x}, y: {init_y}, z: 0.0}}, orientation: "
+        f"{{x: 0.0, y: 0.0, z: {qz}, w: {qw}}}}}, covariance: {cov}}}}}"
+    )
+    print(f"   Auto initial pose: ({init_x}, {init_y}, yaw={init_yaw}) "
+          f"[override with INIT_X/INIT_Y/INIT_YAW]")
+
+    seed_initialpose = TimerAction(
+        # Delay so AMCL's lifecycle node is active before we publish; publish a
+        # few times (-t 3) so a single dropped message can't leave us unlocalized.
+        period=7.0,
+        actions=[ExecuteProcess(
+            cmd=['ros2', 'topic', 'pub', '-t', '3', '/initialpose',
+                 'geometry_msgs/msg/PoseWithCovarianceStamped', initialpose_yaml],
+            output='screen',
+        )],
+    )
+
+    # Bridge Foxglove's "Publish" tool into Nav2 actions: publishing /goal_pose
+    # (Pose mode) drives NavigateToPose, and /waypoint_add + /waypoints_run build
+    # and run a route - same click-to-go workflow as the sim, no RViz needed.
+    goal_relay = Node(
+        package='go2_nav_sim',
+        executable='goal_relay',
+        name='goal_relay',
+        output='screen',
+        parameters=[{'global_frame': 'map', 'use_sim_time': use_sim_time}],
+    )
+
     return LaunchDescription(
         launch_args +
         core_nodes +
         teleop_nodes +
         viz_nodes +
-        include_launches
+        include_launches +
+        [seed_initialpose, goal_relay]
     )

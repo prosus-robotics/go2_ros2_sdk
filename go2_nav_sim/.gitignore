@@ -1,0 +1,3 @@
+# Generated test worlds (run tools/make_example_world.py to recreate)
+worlds/*.pgm
+worlds/*.yaml

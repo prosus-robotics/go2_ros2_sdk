@@ -14,3 +14,6 @@ go2_robot_sdk/coverage.xml
 /*.yaml
 /*.data
 /*.posegraph
+
+# Saved maps produced by scripts/save_map.sh (local artifacts).
+/maps/

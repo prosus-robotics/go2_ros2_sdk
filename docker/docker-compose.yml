@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   unitree_ros:
     build:
@@ -19,3 +17,37 @@ services:
     devices:
       - /dev/input:/dev/input  # For joystick access
     restart: unless-stopped
+
+  # ----------------------------------------------------------------------------
+  # Tier-0 Nav2 test harness (go2_nav_sim). Runs ENTIRELY inside this one Linux
+  # container, so it works on macOS via Docker Desktop (incl. Apple Silicon) with
+  # no host ROS2 install. Headless: view it in Foxglove Studio at ws://localhost:8765.
+  #
+  #   Build + run (first time compiles the workspace, then it's cached):
+  #     docker compose -f docker/docker-compose.yml up --build sim
+  #   Run the scorecard in another terminal:
+  #     docker compose -f docker/docker-compose.yml exec sim \
+  #       bash -lc "source /ros2_ws/sim_install/setup.bash && ros2 run go2_nav_sim scenario_runner"
+  #
+  # Edit Python on your Mac -> it's live (symlink-install); restart to reload.
+  # ----------------------------------------------------------------------------
+  sim:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    environment:
+      - ROS_DOMAIN_ID=42
+      - ROS_LOCALHOST_ONLY=1   # keep DDS on container loopback (isolated, Mac-safe)
+      # Override the map / spawn pose from the host shell, e.g.:
+      #   SIM_MAP=/ros2_ws/src/my_map.yaml SIM_START_X=0 SIM_START_Y=0 \
+      #     docker compose -f docker/docker-compose.yml up sim
+      - SIM_MAP=${SIM_MAP:-}
+      - SIM_START_X=${SIM_START_X:-2.0}
+      - SIM_START_Y=${SIM_START_Y:-2.0}
+      - SIM_START_YAW=${SIM_START_YAW:-0.0}
+    volumes:
+      - ..:/ros2_ws/src        # live source: edit Python on the Mac, rebuilds on restart
+    ports:
+      - "8765:8765"            # Foxglove bridge websocket -> your Mac browser
+    working_dir: /ros2_ws
+    command: ["bash", "/ros2_ws/src/docker/sim_entrypoint.sh"]

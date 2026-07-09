@@ -58,13 +58,8 @@ Stephen Brawner (brawner@gmail.com)
       link="{robot_num}/base_link" />
   </joint>
 
-  <joint name="{robot_num}/base_footprint_joint" type="fixed">
-    <parent link="{robot_num}/base_link"/>
-    <child link="{robot_num}/base_footprint"/>
-    <origin xyz="0 0 0" rpy="0 0 0"/>
-  </joint>
-  <link name="{robot_num}/base_footprint">
-    </link>
+  <!-- base_footprint is published dynamically by the driver as a flat
+       (yaw-only) odom child; see ros2_publisher._publish_footprint_transform. -->
   <link
     name="map">
   </link>
