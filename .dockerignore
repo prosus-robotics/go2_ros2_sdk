@@ -1,0 +1,39 @@
+# Keep the Docker build context lean. Anything listed here is NOT sent to the
+# build and therefore CANNOT invalidate a layer. The point: saving a map,
+# committing, or editing a host script should never bust the image cache.
+#
+# Only exclude things the image does NOT need to build/run. The ROS packages,
+# requirements.txt, meshes/urdf/wasm assets, etc. are intentionally NOT here.
+
+# Git + tooling
+.git
+.gitignore
+.cursor/
+.vscode/
+
+# Host-only helper scripts and docs (never used inside the image)
+scripts/
+docs/
+*.md
+docker/docker-compose.yml.original
+
+# Saved maps / SLAM artifacts. These are mounted at runtime (-v ./maps:/...),
+# never baked into the image. Root-anchored so package config/*.yaml is safe.
+/maps/
+/*.pgm
+/*.posegraph
+/*.data
+/*.ply
+/*_map_*.yaml
+/floor3_lobby_map.*
+/office_map_*
+/office_real.*
+/robo_room_test.*
+/ven_table_*
+/vending_table_map_*
+
+# Python caches
+**/__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/

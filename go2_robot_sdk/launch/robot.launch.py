@@ -157,7 +157,7 @@ class Go2NodeFactory:
                     ('scan', f'{namespace}/scan'),
                 ],
                 parameters=[{
-                    'target_frame': f'{namespace}/base_link',
+                    'target_frame': f'{namespace}/base_footprint',
                     'max_height': 0.1
                 }],
                 output='screen',
@@ -173,7 +173,7 @@ class Go2NodeFactory:
                     ('scan', 'scan'),
                 ],
                 parameters=[{
-                    'target_frame': 'base_link',
+                    'target_frame': 'base_footprint',
                     'max_height': 0.5
                 }],
                 output='screen',
@@ -256,6 +256,17 @@ class Go2NodeFactory:
                     self.config.config_paths['ekf'],
                     {'use_sim_time': False},
                 ],
+            ),
+            # Bridge Foxglove's "Publish" tool into Nav2 actions (only meaningful
+            # when Nav2 is up): /goal_pose -> NavigateToPose, /waypoint_add +
+            # /waypoints_run -> FollowWaypoints. Click-to-go from the browser.
+            Node(
+                package='go2_nav_sim',
+                executable='goal_relay',
+                name='goal_relay',
+                output='screen',
+                condition=IfCondition(LaunchConfiguration('nav2')),
+                parameters=[{'global_frame': 'map'}],
             ),
         ]
     

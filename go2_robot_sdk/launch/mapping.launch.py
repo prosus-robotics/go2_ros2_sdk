@@ -123,7 +123,7 @@ def generate_launch_description():
                 ('scan', '/scan'),
             ],
             parameters=[{
-                'target_frame': 'base_link',
+                'target_frame': 'base_footprint',
                 'max_height': 3.0,
                 'min_height': -1.0,
                 'angle_min': -3.14159,

@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 import logging
+import math
 
 from rclpy.node import Node
 from tf2_ros import TransformBroadcaster
@@ -41,12 +42,16 @@ class ROS2Publisher(IRobotDataPublisher):
 
         try:
             robot_idx = int(robot_data.robot_id)
-            
+
+            # Flat (yaw-only) frame for the 2D nav stack; published always so it
+            # exists even when an EKF owns odom->base_link (see method docstring).
+            self._publish_footprint_transform(robot_data)
+
             # Publish odom->base_link TF unless an external estimator (e.g. a
             # robot_localization EKF) owns it (publish_odom_tf:=false).
             if self.config.publish_odom_tf:
                 self._publish_transform(robot_data, robot_idx)
-            
+
             # Publish odometry topic
             self._publish_odometry_topic(robot_data, robot_idx)
             
@@ -77,6 +82,43 @@ class ROS2Publisher(IRobotDataPublisher):
         odom_trans.transform.rotation.w = float(orientation['w'])
 
         self.broadcaster.sendTransform(odom_trans)
+
+    def _publish_footprint_transform(self, robot_data: RobotData) -> None:
+        """Publish odom -> base_footprint: the base pose with roll/pitch removed.
+
+        base_link carries the Go2's true 3D body attitude (it pitches/rolls as the
+        dog walks), which is correct for the IMU/URDF but tilts a 2D costmap and
+        the projected laser scan. base_footprint is the same x/y/yaw at the same
+        position but kept flat, so the 2D nav stack (costmaps, AMCL, slam_toolbox,
+        pointcloud_to_laserscan) never sees that tilt. Published unconditionally -
+        even when an EKF owns odom->base_link - so the 2D frame always exists.
+        """
+        position = robot_data.odometry_data.position
+        orientation = robot_data.odometry_data.orientation
+
+        qx = float(orientation['x'])
+        qy = float(orientation['y'])
+        qz = float(orientation['z'])
+        qw = float(orientation['w'])
+        # Project the full orientation onto its yaw component only.
+        yaw = math.atan2(2.0 * (qw * qz + qx * qy),
+                         1.0 - 2.0 * (qy * qy + qz * qz))
+
+        foot_trans = TransformStamped()
+        foot_trans.header.stamp = self.node.get_clock().now().to_msg()
+        foot_trans.header.frame_id = 'odom'
+        if self.config.conn_mode == 'single':
+            foot_trans.child_frame_id = "base_footprint"
+        else:
+            foot_trans.child_frame_id = f"robot{robot_data.robot_id}/base_footprint"
+
+        foot_trans.transform.translation.x = float(position['x'])
+        foot_trans.transform.translation.y = float(position['y'])
+        foot_trans.transform.translation.z = float(position['z']) + 0.07
+        foot_trans.transform.rotation.z = math.sin(yaw / 2.0)
+        foot_trans.transform.rotation.w = math.cos(yaw / 2.0)
+
+        self.broadcaster.sendTransform(foot_trans)
 
     def _publish_odometry_topic(self, robot_data: RobotData, robot_idx: int) -> None:
         """Publish Odometry topic"""
